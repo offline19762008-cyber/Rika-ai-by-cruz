@@ -1,4 +1,4 @@
-# 🧬 WormGPT — Dark Mode Edition
+# 🧬 RIKA AI — Advanced Edition
 
 A high-performance, multi-language Telegram AI chatbot built with Python and `python-telegram-bot` v21+, powered by OpenRouter (DeepSeek-V3).
 
@@ -27,12 +27,12 @@ A high-performance, multi-language Telegram AI chatbot built with Python and `py
 ## 📂 Project Structure
 
 ```
-WormGPT/
+RIKA-AI/
 ├── main.py              # Entry point (loads .env, starts bot)
 ├── telegram_bot.py      # Core bot logic
 ├── keep_alive.py        # Flask keep-alive server
 ├── system-prompt.txt    # Custom system prompt
-├── wormgpt_config.json  # Optional advanced config
+├── bot_config.json      # Bot configuration
 ├── requirements.txt     # Dependencies
 ├── .env.example         # Environment template
 ├── .gitignore           # Git ignore rules
@@ -47,8 +47,8 @@ WormGPT/
 ### 1. Clone & Setup
 
 ```bash
-git clone https://github.com/OGAbdulOfficial/WormGPT.git
-cd WormGPT
+git clone https://github.com/offline19762008-cyber/Rika-ai-by-cruz.git
+cd Rika-ai-by-cruz
 pip install -r requirements.txt
 ```
 
@@ -94,35 +94,18 @@ python main.py
 
 ## 🚀 Deploy on Railway
 
-1. Push this repo to GitHub
-2. Create a new Railway service → Deploy from GitHub
-3. Add environment variables (`TELEGRAM_TOKEN`, `OPENROUTER_KEY`)
-4. Deploy ✅
+1. Push to GitHub
+2. Connect repo to Railway
+3. Set environment variables
+4. Deploy!
 
 ---
 
-## 🧾 Requirements
+## 📝 License
 
-```
-python-telegram-bot==21.5
-httpx>=0.27.0
-python-dotenv>=1.0.0
-flask>=3.0.0
-```
+Personal/Developer License - Redistribution prohibited.
 
 ---
 
-## 🧧 Credits
-
-- **Development**: AbdulDev (@AbdulBotzOfficial)
-- **AI Provider**: [OpenRouter.ai](https://openrouter.ai)
-- **Model**: DeepSeek Chat V3
-- **Framework**: [python-telegram-bot](https://python-telegram-bot.org)
-
-> ⚠️ Please do not remove credits. Respect open-source ethics.
-
----
-
-## ❤️ License
-
-MIT License — Free to fork, modify, and improve. Attribution required.
+**Powered By:** @the_true_creator  
+**Credits:** @rika_updats
