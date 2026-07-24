@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 PROMPT_FILE = "system-prompt.txt"
 USER_LANG_FILE = "user_langs.json"
+BOT_CONFIG_FILE = "bot_config.json"
 
 MODEL_CONFIG = {
     "name": os.getenv("MODEL_NAME", "deepseek/deepseek-chat"),
@@ -45,6 +46,16 @@ FLOOD_DELAY = 2  # seconds
 # === Conversation History ===
 MAX_HISTORY = 20  # max messages per user (10 pairs)
 CONVERSATION_HISTORY: dict[int, list[dict]] = defaultdict(list)
+
+# === Bot Config ===
+BOT_CONFIG = {}
+if os.path.exists(BOT_CONFIG_FILE):
+    try:
+        with open(BOT_CONFIG_FILE, "r", encoding="utf-8") as f:
+            BOT_CONFIG = json.load(f)
+    except (json.JSONDecodeError, IOError) as e:
+        logger.warning(f"Failed to load bot config: {e}")
+        BOT_CONFIG = {}
 
 
 # ======================================================================
@@ -223,7 +234,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_user = await context.bot.get_me()
     context.bot_data["username"] = bot_user.username
 
-    keyboard = InlineKeyboardMarkup([
+    # Language selection keyboard
+    lang_keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton("🇮🇩 Indonesian", callback_data="lang_id"),
             InlineKeyboardButton("🇺🇸 English", callback_data="lang_en"),
@@ -233,6 +245,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("🇵🇰 Urdu", callback_data="lang_ur"),
         ],
     ])
+
+    # Additional buttons for owner, support, and updates
+    owner_id = BOT_CONFIG.get("bot_owner_id", "")
+    support_chat = BOT_CONFIG.get("support", {}).get("chat", "")
+    updates_channel = BOT_CONFIG.get("support", {}).get("updates_channel", "")
+
+    buttons = []
+    
+    # Owner ID button
+    if owner_id:
+        buttons.append(
+            InlineKeyboardButton(f"👤 Owner ID: {owner_id}", url=f"https://t.me/{owner_id}")
+        )
+    
+    # Support Chat button
+    if support_chat:
+        buttons.append(
+            InlineKeyboardButton("💬 Support Chat", url=support_chat)
+        )
+    
+    # Updates Channel button
+    if updates_channel:
+        buttons.append(
+            InlineKeyboardButton("📢 Updates Channel", url=updates_channel)
+        )
+
+    # Combine all keyboards
+    all_buttons = lang_keyboard.inline_keyboard.copy()
+    if buttons:
+        all_buttons.extend([buttons])  # Add support buttons as a row
+    
+    keyboard = InlineKeyboardMarkup(all_buttons)
 
     msg = (
         "🧬 <b>W O R M G P T</b>  ·  <i>Dark Mode Edition</i>\n"
