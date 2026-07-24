@@ -42,6 +42,19 @@ REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@AbdulBotzOfficial")
 LAST_MESSAGE_TIME: dict[int, float] = {}
 FLOOD_DELAY = 2  # seconds
 
+# === Owner / Sudo (Admin Powers) ===
+# Set OWNER_ID to your Telegram user ID. SUDO_USERS is a comma-separated
+# list of additional admin user IDs that share the same powers.
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))
+SUDO_IDS: set[int] = {int(x) for x in os.getenv("SUDO_USERS", "").split(",") if x.strip()}
+
+# === Global Ban (persistent) ===
+BANNED_FILE = "banned_users.json"
+BANNED_USERS: dict[str, str] = {}  # user_id(str) -> reason
+
+# === Seen users per chat (used by /banall) ===
+SEEN_USERS: dict[int, set[int]] = defaultdict(set)
+
 # === Conversation History ===
 MAX_HISTORY = 20  # max messages per user (10 pairs)
 CONVERSATION_HISTORY: dict[int, list[dict]] = defaultdict(list)
@@ -82,6 +95,59 @@ def save_user_langs():
 
 def get_user_lang(user_id: int) -> str:
     return USER_LANGS.get(str(user_id), "en")
+
+
+# ======================================================================
+# === Global Ban Persistence ===========================================
+# ======================================================================
+
+def load_banned_users():
+    """Load the globally banned users from disk (if present)."""
+    global BANNED_USERS
+    if Path(BANNED_FILE).exists():
+        try:
+            with open(BANNED_FILE, "r", encoding="utf-8") as f:
+                BANNED_USERS = json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            logger.warning(f"Failed to load banned users: {e}")
+            BANNED_USERS = {}
+    else:
+        BANNED_USERS = {}
+
+
+def save_banned_users():
+    try:
+        with open(BANNED_FILE, "w", encoding="utf-8") as f:
+            json.dump(BANNED_USERS, f, indent=2, ensure_ascii=False)
+    except IOError as e:
+        logger.error(f"Failed to save banned users: {e}")
+
+
+# ======================================================================
+# === Sudo / Admin Helpers =============================================
+# ======================================================================
+
+def is_sudo(user_id: int) -> bool:
+    """True if the user is the owner or a designated sudo admin."""
+    return user_id == OWNER_ID or user_id in SUDO_IDS
+
+
+def is_globally_banned(user_id: int) -> bool:
+    return str(user_id) in BANNED_USERS
+
+
+def add_global_ban(user_id: int, reason: str = "No reason provided") -> None:
+    BANNED_USERS[str(user_id)] = reason
+    save_banned_users()
+
+
+def remove_global_ban(user_id: int) -> bool:
+    uid = str(user_id)
+    if uid in BANNED_USERS:
+        del BANNED_USERS[uid]
+        save_banned_users()
+        return True
+    return False
 
 
 # ======================================================================
@@ -213,11 +279,53 @@ async def force_join_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 # ======================================================================
+# === Global Ban Guard =================================================
+# ======================================================================
+
+async def global_ban_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Returns True if the user is NOT globally banned, False if blocked."""
+    user_id = update.effective_user.id
+    if is_globally_banned(user_id):
+        if update.message:
+            await update.message.reply_text(
+                "🚫 <b>You are globally banned</b> from using this bot.",
+                parse_mode=ParseMode.HTML,
+            )
+        return False
+    return True
+
+
+async def access_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Global ban check for everyone + force-join for non-sudo users.
+
+    Sudo users bypass the force-join requirement for convenience.
+    """
+    if not await global_ban_guard(update, context):
+        return False
+    if not is_sudo(update.effective_user.id):
+        return await force_join_guard(update, context)
+    return True
+
+
+async def sudo_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Returns True only if the caller is an owner/sudo admin."""
+    user_id = update.effective_user.id
+    if not is_sudo(user_id):
+        if update.message:
+            await update.message.reply_text(
+                "⛔ <b>Access Denied</b> — this command is owner/sudo only.",
+                parse_mode=ParseMode.HTML,
+            )
+        return False
+    return True
+
+
+# ======================================================================
 # === /start ===========================================================
 # ======================================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await force_join_guard(update, context):
+    if not await access_guard(update, context):
         return
 
     bot_user = await context.bot.get_me()
@@ -307,6 +415,9 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ======================================================================
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await access_guard(update, context):
+        return
+
     msg = (
         "📖 <b>WormGPT Commands</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -315,13 +426,29 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🧹 /reset — Clear conversation history\n"
         "📊 /stats — Your usage statistics\n"
         "🏓 /ping — Check bot latency\n"
-        "📖 /help — Show this help message\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📖 /help — Show this help message"
+    )
+
+    # Admin / Sudo section (only visible to owner & sudo users)
+    if is_sudo(update.effective_user.id):
+        msg += (
+            "\n\n👑 <b>Admin / Sudo Powers</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "🚫 /gban &lt;user_id&gt; [reason] — Globally ban a user\n"
+            "✅ /ungban &lt;user_id&gt; — Remove a global ban\n"
+            "🚫 /banall confirm — Ban all members seen in this group\n"
+            "📋 /banned — List globally banned users\n"
+            "👑 /sudolist — List owner & sudo users"
+        )
+
+    msg += (
+        "\n\n━━━━━━━━━━━━━━━━━━━━━━━\n"
         "💡 <b>Tips:</b>\n"
         "• In groups, mention the bot or reply to it\n"
         "• Bot remembers your conversation context\n"
         "• Use /reset to start a fresh conversation"
     )
+
     await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
 
 
@@ -330,6 +457,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ======================================================================
 
 async def reset_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await access_guard(update, context):
+        return
     user_id = update.message.from_user.id
     CONVERSATION_HISTORY[user_id].clear()
     await update.message.reply_text(
@@ -343,6 +472,8 @@ async def reset_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ======================================================================
 
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await access_guard(update, context):
+        return
     user_id = update.message.from_user.id
     lang = get_user_lang(user_id)
     history_count = len(CONVERSATION_HISTORY.get(user_id, []))
@@ -364,6 +495,8 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ======================================================================
 
 async def ping_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await access_guard(update, context):
+        return
     start_time = time.monotonic()
     msg = await update.message.reply_text("🏓 Pinging...")
     latency = (time.monotonic() - start_time) * 1000
@@ -386,8 +519,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_msg:
         return
 
-    # === Force Join Guard ===
-    if not await force_join_guard(update, context):
+    # === Track seen users (used by /banall) ===
+    SEEN_USERS[update.message.chat.id].add(user_id)
+
+    # === Access Guard (global ban + force join) ===
+    if not await access_guard(update, context):
         return
 
     # === Anti Flood ===
@@ -485,6 +621,8 @@ async def send_long_message(update: Update, text: str, chunk_size: int = 4000):
 # ======================================================================
 
 async def setlang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await access_guard(update, context):
+        return
     args = context.args
     valid_langs = {"en", "id", "hi", "ur"}
 
@@ -519,6 +657,152 @@ async def setlang_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ======================================================================
+# === Admin / Sudo Powers ==============================================
+# ======================================================================
+
+async def gban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Globally ban a user from using the bot everywhere."""
+    if not await sudo_guard(update, context):
+        return
+
+    args = context.args
+    if not args:
+        return await update.message.reply_text(
+            "🚫 <b>Global Ban</b>\n\n"
+            "Usage: <code>/gban &lt;user_id&gt; [reason]</code>\n"
+            "Example: <code>/gban 123456 Spamming</code>",
+            parse_mode=ParseMode.HTML,
+        )
+
+    try:
+        target = int(args[0])
+    except ValueError:
+        return await update.message.reply_text(
+            "❌ <code>user_id</code> must be a number.", parse_mode=ParseMode.HTML
+        )
+
+    if target == OWNER_ID or target in SUDO_IDS:
+        return await update.message.reply_text(
+            "⛔ You cannot globally ban the owner or a sudo user.",
+            parse_mode=ParseMode.HTML,
+        )
+
+    reason = " ".join(args[1:]).strip() or "No reason provided"
+    add_global_ban(target, reason)
+
+    await update.message.reply_text(
+        f"🚫 <b>Globally banned:</b> <code>{target}</code>\n"
+        f"📝 Reason: {reason}",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def ungban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Remove a global ban."""
+    if not await sudo_guard(update, context):
+        return
+
+    args = context.args
+    if not args:
+        return await update.message.reply_text(
+            "✅ <b>Unban</b>\n\nUsage: <code>/ungban &lt;user_id&gt;</code>",
+            parse_mode=ParseMode.HTML,
+        )
+
+    try:
+        target = int(args[0])
+    except ValueError:
+        return await update.message.reply_text(
+            "❌ <code>user_id</code> must be a number.", parse_mode=ParseMode.HTML
+        )
+
+    if remove_global_ban(target):
+        await update.message.reply_text(
+            f"✅ <b>Unbanned:</b> <code>{target}</code>", parse_mode=ParseMode.HTML
+        )
+    else:
+        await update.message.reply_text(
+            f"ℹ️ <code>{target}</code> was not banned.", parse_mode=ParseMode.HTML
+        )
+
+
+async def banned_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List all globally banned users."""
+    if not await sudo_guard(update, context):
+        return
+
+    if not BANNED_USERS:
+        return await update.message.reply_text(
+            "📋 No users are globally banned.", parse_mode=ParseMode.HTML
+        )
+
+    lines = ["📋 <b>Globally Banned Users</b>", "━━━━━━━━━━━━━━━━━━━━━━━"]
+    for uid, reason in BANNED_USERS.items():
+        lines.append(f"• <code>{uid}</code> — {reason}")
+    lines.append(f"\n🔢 Total: <b>{len(BANNED_USERS)}</b>")
+
+    await send_long_message(update, "\n".join(lines))
+
+
+async def sudolist_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List owner and sudo admins."""
+    if not await sudo_guard(update, context):
+        return
+
+    lines = ["👑 <b>Sudo / Admin Powers</b>", "━━━━━━━━━━━━━━━━━━━━━━━"]
+    if OWNER_ID:
+        lines.append(f"👑 Owner: <code>{OWNER_ID}</code>")
+    else:
+        lines.append("👑 Owner: <i>not set (set OWNER_ID)</i>")
+    if SUDO_IDS:
+        lines.append("🛡️ Sudo users:")
+        for s in sorted(SUDO_IDS):
+            lines.append(f"   • <code>{s}</code>")
+    else:
+        lines.append("🛡️ Sudo users: <i>none</i>")
+
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+
+
+async def banall_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Globally ban every member seen in the current group."""
+    if not await sudo_guard(update, context):
+        return
+
+    chat_type = update.message.chat.type
+    if chat_type not in ("group", "supergroup"):
+        return await update.message.reply_text(
+            "⚠️ <b>/banall</b> only works inside a group.", parse_mode=ParseMode.HTML
+        )
+
+    args = context.args
+    if not args or args[0].lower() != "confirm":
+        return await update.message.reply_text(
+            "⚠️ <b>DANGER:</b> This will globally ban EVERY member seen in this "
+            "group from using the bot.\n\n"
+            "To confirm, run: <code>/banall confirm</code>",
+            parse_mode=ParseMode.HTML,
+        )
+
+    members = SEEN_USERS.get(update.message.chat.id, set())
+    banned, skipped = 0, 0
+    for uid in members:
+        if uid == OWNER_ID or uid in SUDO_IDS:
+            skipped += 1
+            continue
+        if not is_globally_banned(uid):
+            add_global_ban(uid, "Banned via /banall")
+        banned += 1
+
+    await update.message.reply_text(
+        f"🚫 <b>Group ban complete.</b>\n"
+        f"• Banned: <code>{banned}</code>\n"
+        f"• Skipped (owner/sudo): <code>{skipped}</code>",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+# ======================================================================
 # === Error Handler ====================================================
 # ======================================================================
 
@@ -548,6 +832,11 @@ async def post_init(application):
         BotCommand("reset", "🧹 Clear chat history"),
         BotCommand("stats", "📊 Your usage stats"),
         BotCommand("ping", "🏓 Check latency"),
+        BotCommand("gban", "🚫 Global ban (sudo)"),
+        BotCommand("ungban", "✅ Unban (sudo)"),
+        BotCommand("banall", "🚫 Ban all in group (sudo)"),
+        BotCommand("banned", "📋 List bans (sudo)"),
+        BotCommand("sudolist", "👑 List admins (sudo)"),
     ]
     await application.bot.set_my_commands(commands)
     logger.info("✅ Bot commands registered")
@@ -566,6 +855,14 @@ def run_bot():
         logger.error("OPENROUTER_KEY is not set!")
         return
 
+    # Load persistent global bans
+    load_banned_users()
+    logger.info("🚫 Loaded %d globally banned users", len(BANNED_USERS))
+    if OWNER_ID:
+        logger.info("👑 Owner ID: %s", OWNER_ID)
+    if SUDO_IDS:
+        logger.info("🛡️ Sudo users: %s", sorted(SUDO_IDS))
+
     app = (
         ApplicationBuilder()
         .token(TELEGRAM_TOKEN)
@@ -580,6 +877,13 @@ def run_bot():
     app.add_handler(CommandHandler("reset", reset_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(CommandHandler("ping", ping_cmd))
+
+    # Admin / Sudo commands
+    app.add_handler(CommandHandler("gban", gban_cmd))
+    app.add_handler(CommandHandler("ungban", ungban_cmd))
+    app.add_handler(CommandHandler("banall", banall_cmd))
+    app.add_handler(CommandHandler("banned", banned_cmd))
+    app.add_handler(CommandHandler("sudolist", sudolist_cmd))
 
     # Callbacks
     app.add_handler(CallbackQueryHandler(language_callback, pattern=r"^lang_"))

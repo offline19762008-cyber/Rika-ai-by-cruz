@@ -16,6 +16,9 @@ A high-performance, multi-language Telegram AI chatbot built with Python and `py
 | ⚡ **Fully Async** | Non-blocking httpx — handles 100+ users |
 | 🔐 **Force Join** | Require users to join your channel first |
 | 🛡️ **Anti-Flood** | Built-in slowmode (2 sec) per user |
+| 👑 **Sudo Power** | Owner + sudo admins with special privileges |
+| 🚫 **Global Ban** | `/gban` blocks a user from the bot everywhere |
+| 🚫 **Ban All** | `/banall` bans every member seen in a group |
 | 📊 **User Stats** | `/stats` command shows usage info |
 | 🧹 **Reset Chat** | `/reset` clears conversation history |
 | 🏓 **Ping/Latency** | `/ping` for bot latency check |
@@ -76,6 +79,8 @@ python main.py
 | `MODEL_NAME` | ❌ | AI model (default: `deepseek/deepseek-chat`) |
 | `API_BASE_URL` | ❌ | API endpoint (default: OpenRouter) |
 | `REQUIRED_CHANNEL` | ❌ | Force-join channel username |
+| `OWNER_ID` | ❌ | Bot owner's Telegram user ID (gets sudo power) |
+| `SUDO_USERS` | ❌ | Comma-separated admin user IDs (sudo power) |
 
 ---
 
@@ -89,6 +94,23 @@ python main.py
 | `/reset` | Clear conversation history |
 | `/stats` | View your usage statistics |
 | `/ping` | Check bot response latency |
+
+### 👑 Admin / Sudo Powers
+
+These commands are **owner/sudo only**. Set `OWNER_ID` (your Telegram user ID)
+and optionally `SUDO_USERS` (comma-separated admin IDs) in your environment.
+
+| Command | Description |
+|---------|-------------|
+| `/gban <user_id> [reason]` | Globally ban a user from the bot everywhere |
+| `/ungban <user_id>` | Remove a global ban |
+| `/banall confirm` | Globally ban **all** members seen in the current group |
+| `/banned` | List all globally banned users |
+| `/sudolist` | List the owner and sudo admins |
+
+> 💡 Banned users are stored in `banned_users.json` and persist across restarts.
+> The owner and sudo users can never be banned. `/banall` requires the literal
+> `confirm` argument to prevent accidents and skips owner/sudo members.
 
 ---
 

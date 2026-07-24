@@ -1,0 +1,14 @@
+# Environment / secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime state (do not commit)
+banned_users.json
+
+# OS / editor
+.DS_Store
+*.swp
