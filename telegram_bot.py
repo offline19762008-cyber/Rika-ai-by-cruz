@@ -53,9 +53,20 @@ if os.path.exists(BOT_CONFIG_FILE):
     try:
         with open(BOT_CONFIG_FILE, "r", encoding="utf-8") as f:
             BOT_CONFIG = json.load(f)
+            logger.info("✅ Bot config loaded from file")
     except (json.JSONDecodeError, IOError) as e:
-        logger.warning(f"Failed to load bot config: {e}")
+        logger.warning(f"Failed to load bot config file: {e}")
         BOT_CONFIG = {}
+else:
+    logger.warning(f"Bot config file not found: {BOT_CONFIG_FILE}")
+    # Set defaults from environment or hardcoded values
+    BOT_CONFIG = {
+        "bot_owner_id": os.getenv("BOT_OWNER_ID", "8705127026"),
+        "support": {
+            "chat": os.getenv("SUPPORT_CHAT", "https://t.me/rika_support"),
+            "updates_channel": os.getenv("UPDATES_CHANNEL", "https://t.me/rika_updats")
+        }
+    }
 
 
 # ======================================================================
@@ -63,9 +74,15 @@ if os.path.exists(BOT_CONFIG_FILE):
 # ======================================================================
 
 if os.path.exists(PROMPT_FILE):
-    with open(PROMPT_FILE, "r", encoding="utf-8") as f:
-        BASE_PROMPT = f.read().strip()
+    try:
+        with open(PROMPT_FILE, "r", encoding="utf-8") as f:
+            BASE_PROMPT = f.read().strip()
+            logger.info("✅ System prompt loaded")
+    except IOError as e:
+        logger.warning(f"Failed to load system prompt: {e}")
+        BASE_PROMPT = "You are WormGPT running on Telegram."
 else:
+    logger.warning(f"System prompt file not found: {PROMPT_FILE}")
     BASE_PROMPT = "You are WormGPT running on Telegram."
 
 
@@ -78,6 +95,7 @@ if Path(USER_LANG_FILE).exists():
     try:
         with open(USER_LANG_FILE, "r", encoding="utf-8") as f:
             USER_LANGS = json.load(f)
+            logger.info("✅ User languages loaded")
     except (json.JSONDecodeError, IOError) as e:
         logger.warning(f"Failed to load user langs: {e}")
         USER_LANGS = {}
@@ -256,7 +274,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Owner ID button
     if owner_id:
         buttons.append(
-            InlineKeyboardButton(f"👤 Owner ID: {owner_id}", url=f"https://t.me/{owner_id}")
+            InlineKeyboardButton(f"👤 Owner: {owner_id}", url=f"https://t.me/{owner_id}")
         )
     
     # Support Chat button
@@ -268,7 +286,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Updates Channel button
     if updates_channel:
         buttons.append(
-            InlineKeyboardButton("📢 Updates Channel", url=updates_channel)
+            InlineKeyboardButton("📢 Updates", url=updates_channel)
         )
 
     # Combine all keyboards
@@ -603,11 +621,11 @@ async def post_init(application):
 
 def run_bot():
     if not TELEGRAM_TOKEN:
-        logger.error("TELEGRAM_TOKEN is not set!")
+        logger.error("❌ TELEGRAM_TOKEN is not set!")
         return
 
     if not MODEL_CONFIG["key"]:
-        logger.error("OPENROUTER_KEY is not set!")
+        logger.error("❌ OPENROUTER_KEY is not set!")
         return
 
     app = (
