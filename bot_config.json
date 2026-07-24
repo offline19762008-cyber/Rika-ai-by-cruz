@@ -1,5 +1,12 @@
 {
   "bot_owner_id": 8705127026,
   "bot_owner_type": "user",
-  "repository": "offline19762008-cyber/Rika-ai-by-cruz"
+  "repository": "offline19762008-cyber/Rika-ai-by-cruz",
+  "permissions": {
+    "sudo": true,
+    "admin": true,
+    "maintain": true,
+    "write": true,
+    "read": true
+  }
 }
