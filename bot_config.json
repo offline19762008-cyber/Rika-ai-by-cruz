@@ -8,5 +8,9 @@
     "maintain": true,
     "write": true,
     "read": true
+  },
+  "support": {
+    "chat": "https://t.me/rika_support",
+    "updates_channel": "https://t.me/rika_updats"
   }
 }
