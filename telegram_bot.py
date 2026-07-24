@@ -303,8 +303,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔥 Enhanced & Modified Special Build\n"
         "💬 Multi-language • Conversation Memory\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "💠 Powered By: @AbdulBotzOfficial\n"
-        "💠 Credits: @AbdulBotMakingTips\n"
+        "💠 Powered By: @the_true_creator\n"
+        "💠 Credits: @rika_updats\n"
         "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "🌐 Select your language:"
     )
