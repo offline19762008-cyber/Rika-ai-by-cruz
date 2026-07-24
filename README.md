@@ -107,6 +107,7 @@ and optionally `SUDO_USERS` (comma-separated admin IDs) in your environment.
 | `/banall confirm` | Globally ban **all** members seen in the current group |
 | `/banned` | List all globally banned users |
 | `/sudolist` | List the owner and sudo admins |
+| `/checkchannel` | Validate the force-join / update channel |
 
 > 💡 Banned users are stored in `banned_users.json` and persist across restarts.
 > The owner and sudo users can never be banned. `/banall` requires the literal

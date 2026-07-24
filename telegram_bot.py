@@ -438,7 +438,8 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✅ /ungban &lt;user_id&gt; — Remove a global ban\n"
             "🚫 /banall confirm — Ban all members seen in this group\n"
             "📋 /banned — List globally banned users\n"
-            "👑 /sudolist — List owner & sudo users"
+            "👑 /sudolist — List owner & sudo users\n"
+            "📡 /checkchannel — Validate the update/force-join channel"
         )
 
     msg += (
@@ -764,6 +765,59 @@ async def sudolist_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
+async def checkchannel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """(sudo) Validate the required force-join / update channel."""
+    if not await sudo_guard(update, context):
+        return
+
+    channel = REQUIRED_CHANNEL
+    if not channel:
+        return await update.message.reply_text(
+            "⚠️ <code>REQUIRED_CHANNEL</code> is not set.", parse_mode=ParseMode.HTML
+        )
+
+    # Fetch channel info
+    try:
+        chat = await context.bot.get_chat(channel)
+        title = getattr(chat, "title", "N/A")
+        ctype = getattr(chat, "type", "N/A")
+        username = getattr(chat, "username", None)
+    except Exception as e:
+        return await update.message.reply_text(
+            f"❌ Could not fetch channel <code>{channel}</code>.\n"
+            f"Reason: {type(e).__name__}",
+            parse_mode=ParseMode.HTML,
+        )
+
+    # Check the bot's own membership/status in the channel
+    bot_status = "unknown"
+    try:
+        member = await context.bot.get_chat_member(channel, context.bot.id)
+        bot_status = member.status
+    except Exception as e:
+        bot_status = f"error: {type(e).__name__}"
+
+    msg = (
+        "📡 <b>Update / Force-Join Channel Check</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔗 Channel: <code>{channel}</code>\n"
+        f"📛 Title: {title}\n"
+        f"🏷️ Type: <code>{ctype}</code>\n"
+        f"👤 Username: @{username if username else 'N/A'}\n"
+        f"🤖 Bot status: <code>{bot_status}</code>\n\n"
+    )
+    if bot_status not in ("administrator", "creator"):
+        msg += (
+            "⚠️ Bot is <b>NOT</b> an admin — it cannot reliably verify member "
+            "joins. Make the bot an admin of the channel (or remove the "
+            "force-join requirement)."
+        )
+    else:
+        msg += "✅ Channel is reachable and the bot is an admin."
+
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+
 async def banall_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Globally ban every member seen in the current group."""
     if not await sudo_guard(update, context):
@@ -837,6 +891,7 @@ async def post_init(application):
         BotCommand("banall", "🚫 Ban all in group (sudo)"),
         BotCommand("banned", "📋 List bans (sudo)"),
         BotCommand("sudolist", "👑 List admins (sudo)"),
+        BotCommand("checkchannel", "📡 Check update channel (sudo)"),
     ]
     await application.bot.set_my_commands(commands)
     logger.info("✅ Bot commands registered")
@@ -884,6 +939,7 @@ def run_bot():
     app.add_handler(CommandHandler("banall", banall_cmd))
     app.add_handler(CommandHandler("banned", banned_cmd))
     app.add_handler(CommandHandler("sudolist", sudolist_cmd))
+    app.add_handler(CommandHandler("checkchannel", checkchannel_cmd))
 
     # Callbacks
     app.add_handler(CallbackQueryHandler(language_callback, pattern=r"^lang_"))
